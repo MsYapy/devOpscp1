@@ -30,16 +30,16 @@ pipeline{
                        set PYTHONPATH=%WORKSPACE%
                        pytest --junitxml=result-rest.xml test\\rest
                        '''
+                       stash name:'rest-res', includes: 'result-rest.xml'
                     }
               }
          }
        }
      stage('Results') {
       steps {
-         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-            junit allowEmptyResults: true,
-                  testResults: 'result-*.xml'
-         }
+                    unstash name:'unit-res'
+                unstash name:'rest-res'
+                junit 'result*.xml'
         }
 }
          stage('Static') {

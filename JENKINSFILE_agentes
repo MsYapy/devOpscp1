@@ -1,78 +1,72 @@
-pipeline {
+pipeline{
     agent any
 
-    options { skipDefaultCheckout() }
-
-     stages {
-        stage('Get Code') {
-            steps {
-                // Obtener código del repo
-                git 'https://github.com/anieto-unir/helloworld.git'
-	            echo WORKSPACE
-                bat 'dir'
-                stash name:'code', includes:'**'
-            }
-        }
+    options { skipDefaultCheckout() }   // No descargar el codigo en todos los agentes
     
-        stage('Build') {
-           steps {
-              echo 'Eyyy, esto es Python. No hay que compilar nada!!!'
-           }
+    stages{
+        stage('Get code'){
+            steps{
+                // Obtener el código fuente desde el repositorio Git
+                git 'https://github.com/MsYapy/devOpscp1'
+                echo WORKSPACE
+                bat 'dir'
+                stash name:'code', includes: '**'   // Incluye todo el código fuente en el stash
+            }
         }
         
-        stage('Tests')
-        {
-            parallel
-            {
-                stage('Unit') {
-                    agent {label 'agent1'}
-                    steps {
-                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            unstash name:'code'
-                            sh '''
-                                ls -la
-                                export PYTHONPATH=${WORKSPACE}
-                                /home/agent1/.local/bin/pytest --junitxml=result-unit.xml test/unit
+        stage('Build'){
+            steps{
+                bat 'echo "Esto es Python, no hay nada que compilar"'
+            }
+        }
+        
+        stage('Tests'){
+            parallel{
+                stage('Unit'){
+                    agent {label 'agent'}
+                    steps{
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE'){
+                            unstash name:'code'   // Recupera el código fuente del stash
+                            bat '''
+                                whoami
+                                hostname
+                                set PYTHONPATH=%WORKSPACE%
+                                pytest --junitxml=test\\unit\\report.xml test\\unit
                             '''
-                            stash name:'unit-res', includes:'result-unit.xml'
-                       }
+                        }
+                        stash name:'unit-res', includes: 'test/unit/report.xml'
+                        deleteDir() //Borra el workspace del agente
                     }
-                }   
-                
-                
-                stage('Rest') {
-                    agent {label 'agent2'}
-                    steps {
-                      catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                        unstash name:'code'
-                        sh '''
-                            export FLASK_APP=app/api.py                          
-                            /home/agent2/.local/bin/flask run &
+                }
 
-                            sleep 4
+                stage('Rest'){
+                    agent {label 'agent3'}
+                    steps{
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE'){
+                            unstash name:'code'   // Recupera el código fuente del stash
+                            bat '''
+                               set FLASK_APP=app\\api.py
+                               start flask run
+                               start java -jar C:\\WireMock\\wiremock.jar --port 9090 --root-dir test\\wiremock
+                               ping -n 10 127.0.0.1
+                               set PYTHONPATH=%WORKSPACE%
+                               pytest --junitxml=result-rest.xml test\\rest
+                            '''
+                            stash name:'rest-res', includes: 'result-rest.xml'
+                        }
 
-                            java -jar /home/agent2/wiremock/wiremock-standalone-3.3.1.jar --port 9090 --root-dir /home/agent2/wiremock &
-                            export PYTHONPATH=${WORKSPACE}
-                            
-                            sleep 15
-                            
-                            /home/agent2/.local/bin/pytest --junitxml=result-rest.xml test/rest
-                        '''
-                      }
-                      stash name:'rest-res', includes:'result-rest.xml'
-                    }    
-                }                
-                
+                    }
+                }
             }
         }
 
-        stage('Results') {
-            steps {
+
+        stage('Results'){
+            steps{
                 unstash name:'unit-res'
                 unstash name:'rest-res'
-                junit 'result*.xml' 
+                junit 'result*.xml'
             }
         }
-     
     }
 }
